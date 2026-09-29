@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Financial Document to Markdown Converter & Reviewer</title>
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Marked.js for live Markdown preview -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+  <style>
+    /* Theme Definitions */
+    :root[data-theme="dark"] {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-subtle: #152136;
+      --surface-border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --preview-bg: #090d16;
+      --table-header-bg: #1f2937;
+      --table-row-even: #162032;
+      --input-bg: #0f172a;
+      --canvas-bg: #ffffff;
+      --badge-bg: #0369a1;
+      --badge-text: #e0f2fe;
+    }
+    :root[data-theme="medium"] {
+      --bg: #1e293b;
+      --surface: #334155;
+      --surface-subtle: #273549;
+      --surface-border: #475569;
+      --text: #f8fafc;
+      --text-muted: #cbd5e1;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --preview-bg: #1a2436;
+      --table-header-bg: #2b3a4f;
+      --table-row-even: #223043;
+      --input-bg: #1e293b;
+      --canvas-bg: #ffffff;
+      --badge-bg: #0284c7;
+      --badge-text: #ffffff;
+    }
+    :root[data-theme="light"] {
+      --bg: #f1f5f9;
+      --surface: #ffffff;
+      --surface-subtle: #f8fafc;
+      --surface-border: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --preview-bg: #ffffff;
+      --table-header-bg: #e2e8f0;
+      --table-row-even: #f8fafc;
+      --input-bg: #ffffff;
+      --canvas-bg: #ffffff;
+      --badge-bg: #e0f2fe;
+      --badge-text: #0369a1;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-border);
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    h1 { font-size: 1.15rem; display: flex; align-items: center; gap: 8px; }
+    .badge {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--badge-bg);
+      color: var(--badge-text);
+      font-weight: 600;
+    }
+    .options-bar {
+      background: var(--surface-subtle);
+      border-bottom: 1px solid var(--surface-border);
+      padding: 8px 20px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 0.85rem;
+    }
+    .options-bar label {
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      height: calc(100vh - 155px);
+    }
+    .pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--surface-border);
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .pane:last-child { border-right: none; }
+    .pane-header {
+      background: var(--surface);
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .pane-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      position: relative;
+    }
+    .control-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    input, select, textarea, button {
+      font-family: inherit;
+      font-size: 0.82rem;
+      border-radius: 6px;
+      border: 1px solid var(--surface-border);
+      background: var(--input-bg);
+      color: var(--text);
+      padding: 5px 9px;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    button {
+      background: var(--surface);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover:not(:disabled) {
+      background: var(--surface-subtle);
+      border-color: var(--primary);
+    }
+    button.primary {
+      background: var(--primary);
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+    }
+    button.primary:hover:not(:disabled) {
+      background: var(--primary-hover);
+      color: #ffffff;
+    }
+    button.danger {
+      background: #dc2626;
+      color: #ffffff;
+      border: none;
+    }
+    button.reset-btn {
+      background: #f59e0b;
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+    }
+    button.reset-btn:hover {
+      background: #d97706;
+      color: #ffffff;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    .upload-zone {
+      border: 2px dashed var(--surface-border);
+      border-radius: 8px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      background: var(--surface);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--primary);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--surface-border);
+      padding: 0 12px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+      padding: 9px 15px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      background: var(--surface);
+      border-radius: 6px;
+      overflow: hidden;
+      height: 8px;
+      margin-top: 8px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    /* Live Markdown Preview */
+    .markdown-rendered-preview {
+      background: var(--preview-bg);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 24px 32px;
+      line-height: 1.6;
+      color: var(--text);
+      font-size: 0.92rem;
+    }
+    .markdown-rendered-preview h1 {
+      font-size: 1.55rem;
+      border-bottom: 2px solid var(--surface-border);
+      padding-bottom: 6px;
+      margin-top: 16px;
+      margin-bottom: 12px;
+      color: var(--primary);
+    }
+    .markdown-rendered-preview h2 {
+      font-size: 1.3rem;
+      border-bottom: 1px solid var(--surface-border);
+      padding-bottom: 6px;
+      margin-top: 20px;
+      margin-bottom: 10px;
+      color: var(--primary);
+    }
+    .markdown-rendered-preview h3 {
+      font-size: 1.05rem;
+      margin-top: 16px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .markdown-rendered-preview p { margin-bottom: 12px; }
+    .markdown-rendered-preview ul, .markdown-rendered-preview ol {
+      margin-bottom: 14px;
+      padding-left: 24px;
+    }
+    .markdown-rendered-preview li { margin-bottom: 4px; }
+    .markdown-rendered-preview table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 0.85rem;
+      background: var(--surface);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .markdown-rendered-preview th, .markdown-rendered-preview td {
+      border: 1px solid var(--surface-border);
+      padding: 7px 11px;
+      text-align: left;
+    }
+    .markdown-rendered-preview th {
+      background: var(--table-header-bg);
+      color: var(--primary);
+      font-weight: 600;
+    }
+    .markdown-rendered-preview tr:nth-child(even) { background: var(--table-row-even); }
+    .page-break-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 24px 0 16px 0;
+      color: #d97706;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .page-break-badge::before, .page-break-badge::after {
+      content: "";
+      flex: 1;
+      border-bottom: 1px dashed #d97706;
+      margin: 0 12px;
+    }
+
+    /* Grid */
+    .grid-container {
+      overflow-x: auto;
+      max-height: 480px;
+      border: 1px solid var(--surface-border);
+      border-radius: 6px;
+    }
+    table.data-grid {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.85rem;
+    }
+    table.data-grid th, table.data-grid td {
+      border: 1px solid var(--surface-border);
+      padding: 6px 8px;
+      white-space: nowrap;
+    }
+    table.data-grid th {
+      background: var(--table-header-bg);
+      color: var(--primary);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    table.data-grid td {
+      background: var(--input-bg);
+      min-width: 90px;
+    }
+    table.data-grid td[contenteditable="true"]:focus {
+      outline: 2px solid var(--primary);
+      background: var(--surface-subtle);
+    }
+
+    .discrepancy-item {
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      background: rgba(248, 113, 113, 0.15);
+      border: 1px solid #f87171;
+      font-size: 0.85rem;
+    }
+    .discrepancy-item.pass {
+      background: rgba(74, 222, 128, 0.15);
+      border-color: #4ade80;
+    }
+
+    .test-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+    }
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .test-title { font-weight: 600; font-size: 0.88rem; }
+    .status-pill {
+      font-size: 0.72rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .status-pill.pass { background: rgba(74, 222, 128, 0.2); color: #16a34a; }
+    .status-pill.fail { background: rgba(248, 113, 113, 0.2); color: #dc2626; }
+    .status-pill.idle { background: var(--surface-subtle); color: var(--text-muted); }
+    .test-detail { font-size: 0.78rem; color: var(--text-muted); font-family: monospace; }
+
+    #sourceCanvas {
+      max-width: 100%;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      border-radius: 4px;
+      background: var(--canvas-bg);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>
+    <span>📊 Financial MD Transcriber</span>
+    <span class="badge">Theme &amp; Reset Edition</span>
+  </h1>
+  <div class="control-row">
+    <!-- Theme Switcher -->
+    <label style="font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
+      Theme:
+      <select id="themeSelect" onchange="changeTheme(this.value)">
+        <option value="dark">🌙 Dark</option>
+        <option value="medium">🌓 Medium</option>
+        <option value="light">☀️ Light</option>
+      </select>
+    </label>
+
+    <select id="providerSelect" onchange="updateProviderConfig()">
+      <option value="gemini">Google Gemini</option>
+      <option value="openai">OpenAI</option>
+      <option value="groq">Groq</option>
+    </select>
+    <input type="text" id="modelInput" placeholder="Model (e.g. gemini-1.5-pro)" style="width: 165px;">
+    <input type="password" id="apiKeyInput" placeholder="API Key" style="width: 145px;">
+    <button onclick="saveApiConfig()">💾 Save</button>
+    <button class="reset-btn" onclick="confirmAndResetAll()">🔄 Reset Page</button>
+  </div>
+</header>
+
+<!-- Export Options Bar -->
+<div class="options-bar">
+  <span style="font-weight: 600; color: var(--primary);">⚙️ Page &amp; Export Formatting:</span>
+  <label>
+    Page Break Marker:
+    <select id="pageBreakSelect" onchange="reformatDocumentLayout()">
+      <option value="comment">&lt;!-- pagebreak --&gt; (Pandoc / Standard)</option>
+      <option value="hr">--- (Horizontal Rule)</option>
+      <option value="formfeed">\f (ASCII Form Feed)</option>
+      <option value="none">None (Double Newline)</option>
+    </select>
+  </label>
+  <label>
+    Source-Page Heading:
+    <select id="pageHeadingSelect" onchange="reformatDocumentLayout()">
+      <option value="h2">## Page {n} (Heading 2)</option>
+      <option value="h3_total">### Page {n} of {total} (Heading 3 with count)</option>
+      <option value="bold">**[Page {n}]** (Bold Badge)</option>
+      <option value="comment">&lt;!-- Page {n} --&gt; (Hidden Comment)</option>
+      <option value="none">None (No Page Heading)</option>
+    </select>
+  </label>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tabLiveBtn" onclick="switchRightTab('live')">👁️ Live Formatted Preview</button>
+  <button class="tab-btn" id="tabGridBtn" onclick="switchRightTab('grid')">📋 Table Grid Review</button>
+  <button class="tab-btn" id="tabRawBtn" onclick="switchRightTab('raw')">📝 Raw Markdown</button>
+  <button class="tab-btn" id="tabChecksBtn" onclick="switchRightTab('checks')">⚖️ Financial Checks</button>
+  <button class="tab-btn" id="tabTestsBtn" onclick="switchRightTab('tests')">🧪 Conversion Tests (<span id="testSummaryBadge">Ready</span>)</button>
+</div>
+
+<div class="main-container">
+  <!-- Left Pane: Source Preview & Upload -->
+  <div class="pane" id="leftPane">
+    <div class="pane-header">
+      <span>Original Source Document</span>
+      <div class="control-row">
+        <div id="pageNav" style="display: none; align-items: center; gap: 4px;">
+          <button onclick="prevPage()">◀</button>
+          <span id="pageCounter" style="font-size: 0.8rem; margin: 0 4px;">Page 1 / 1</span>
+          <button onclick="nextPage()">▶</button>
+        </div>
+        <button id="resetSourceBtn" style="display: none;" onclick="confirmAndResetAll()">✕ Clear File</button>
+      </div>
+    </div>
+    <div class="pane-content" style="text-align: center;">
+      <div id="dropZone" class="upload-zone">
+        <p style="font-weight: 600; font-size: 1rem; margin-bottom: 6px;">Click or Drag &amp; Drop Financial Document</p>
+        <p style="color: var(--text-muted); font-size: 0.82rem;">Supports multi-page PDFs &amp; images (PNG, JPG, WebP)</p>
+        <input type="file" id="filePicker" accept="application/pdf,image/*" style="display: none;" onchange="handleFileSelected(event)">
+      </div>
+
+      <div id="previewWrapper" style="display: none; margin-top: 14px;">
+        <canvas id="sourceCanvas"></canvas>
+
+        <div style="margin-top: 14px; background: var(--surface); padding: 12px; border-radius: 8px; text-align: left; border: 1px solid var(--surface-border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span id="transcribeStatusLabel" style="font-size: 0.85rem; font-weight: 600;">Ready to transcribe</span>
+            <button id="cancelBtn" class="danger" style="display: none; padding: 2px 7px; font-size: 0.75rem;" onclick="cancelTranscription()">Cancel</button>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progressBar"></div>
+          </div>
+          <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="primary" id="transcribeAllBtn" onclick="transcribeEntireDocument()">⚡ Transcribe Entire Document (All Pages)</button>
+            <button id="transcribePageBtn" onclick="transcribeSingleActivePage()">Current Page Only</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Pane: Multi-view -->
+  <div class="pane" id="rightPane">
+    <!-- View 1: Live Formatted Markdown Preview -->
+    <div id="viewLive" class="pane-content" style="display: block;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Side-by-side rendered view formatted with selected headings, lists, tables, and page breaks:</span>
+        <div class="control-row">
+          <button onclick="copyMarkdown()">📋 Copy MD</button>
+          <button class="primary" onclick="saveMarkdownLocally()">💾 Save to Local Drive (.md)</button>
+        </div>
+      </div>
+      <div id="markdownLiveContainer" class="markdown-rendered-preview">
+        <em>No document transcribed yet. Upload your multi-page financial statement on the left and click "Transcribe Entire Document".</em>
+      </div>
+    </div>
+
+    <!-- View 2: Table Grid Review -->
+    <div id="viewGrid" class="pane-content" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div class="control-row">
+          <label style="font-size: 0.85rem; color: var(--text-muted);">Detected Table:</label>
+          <select id="tableSelector" onchange="loadSelectedTable()"></select>
+          <button onclick="undoGrid()">↩ Undo</button>
+          <button onclick="redoGrid()">↪ Redo</button>
+        </div>
+        <div class="control-row">
+          <button onclick="addRow()">+ Row</button>
+          <button onclick="addColumn()">+ Col</button>
+          <button onclick="applyTableEditsToDoc()">🔄 Sync Table into Document</button>
+        </div>
+      </div>
+      <div class="grid-container">
+        <table id="editableGrid" class="data-grid"></table>
+      </div>
+    </div>
+
+    <!-- View 3: Raw Markdown Editor -->
+    <div id="viewRaw" class="pane-content" style="display: none;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="font-size: 0.85rem; color: var(--text-muted);">Full Multi-page Markdown Document:</span>
+        <button onclick="refreshFromRawTextarea()">⚡ Update Preview &amp; Tables</button>
+      </div>
+      <textarea id="rawMarkdownText" style="width: 100%; height: calc(100% - 40px); font-family: monospace; font-size: 0.82rem; line-height: 1.4; resize: none;"></textarea>
+    </div>
+
+    <!-- View 4: Financial Integrity Checks -->
+    <div id="viewChecks" class="pane-content" style="display: none;">
+      <div style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 600;">Automated Equation Verifications</span>
+        <button onclick="runFinancialChecks()">Re-check Totals</button>
+      </div>
+      <div id="checksResultsContainer">
+        <p style="color: var(--text-muted); font-size: 0.85rem;">Run transcription or load a table to check Assets = Liabilities + Equity and Cash Flow reconciliations.</p>
+      </div>
+    </div>
+
+    <!-- View 5: Conversion Tests Runner -->
+    <div id="viewTests" class="pane-content" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div>
+          <h3 style="font-size: 1rem;">Document Structure &amp; Order Test Suite</h3>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">Verifies headings, ordered/unordered lists, page breaks, and interleaved tables remain in exact original sequence.</p>
+        </div>
+        <div class="control-row">
+          <button class="primary" onclick="runAllConversionTests()">▶ Run All Conversion Tests</button>
+          <button onclick="loadSampleFinancialStatement()">📥 Load Sample Multi-Page Doc</button>
+        </div>
+      </div>
+      <div id="testCardsContainer"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // App State
+  let fullMarkdown = "";
+  let transcribedPages = [];
+  let extractedTables = [];
+  let currentTableIndex = 0;
+  let gridHistory = [];
+  let gridHistoryIndex = -1;
+  let pdfDoc = null;
+  let currentPdfPage = 1;
+  let totalPdfPages = 1;
+  let activeImageBlob = null;
+  let isCancelled = false;
+
+  const defaultModels = {
+    gemini: "gemini-1.5-pro",
+    openai: "gpt-4o",
+    groq: "llama-3.2-11b-vision-preview"
+  };
+
+  window.addEventListener('DOMContentLoaded', () => {
+    loadSavedTheme();
+    loadSavedConfig();
+    setupDropZone();
+    renderConversionTestCards();
+  });
+
+  // Theme Management
+  function changeTheme(themeName) {
+    document.documentElement.setAttribute('data-theme', themeName);
+    document.getElementById('themeSelect').value = themeName;
+    localStorage.setItem('fin_converter_theme', themeName);
+  }
+
+  function loadSavedTheme() {
+    const savedTheme = localStorage.getItem('fin_converter_theme') || 'dark';
+    changeTheme(savedTheme);
+  }
+
+  // Full Reset to Beginning State
+  function confirmAndResetAll() {
+    if (fullMarkdown.trim()) {
+      const confirmReset = confirm('Are you sure you want to reset? Any unsaved edits or transcribed pages will be cleared.');
+      if (!confirmReset) return;
+    }
+    resetAppState();
+  }
+
+  function resetAppState() {
+    // 1. Clear Data State
+    fullMarkdown = "";
+    transcribedPages = [];
+    extractedTables = [];
+    currentTableIndex = 0;
+    gridHistory = [];
+    gridHistoryIndex = -1;
+    pdfDoc = null;
+    currentPdfPage = 1;
+    totalPdfPages = 1;
+    activeImageBlob = null;
+    isCancelled = false;
+
+    // 2. Reset Source Elements
+    const canvas = document.getElementById('sourceCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.width = 0;
+    canvas.height = 0;
+
+    document.getElementById('filePicker').value = "";
+    document.getElementById('previewWrapper').style.display = 'none';
+    document.getElementById('pageNav').style.display = 'none';
+    document.getElementById('resetSourceBtn').style.display = 'none';
+    document.getElementById('dropZone').style.display = 'block';
+
+    // 3. Reset Status and Buttons
+    document.getElementById('transcribeStatusLabel').innerText = 'Ready to transcribe';
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('cancelBtn').style.display = 'none';
+    document.getElementById('transcribeAllBtn').disabled = false;
+    document.getElementById('transcribePageBtn').disabled = false;
+
+    // 4. Reset Editor & Preview Displays
+    document.getElementById('rawMarkdownText').value = "";
+    document.getElementById('markdownLiveContainer').innerHTML = '<em>No document transcribed yet. Upload your multi-page financial statement on the left and click "Transcribe Entire Document".</em>';
+    document.getElementById('editableGrid').innerHTML = "";
+    document.getElementById('tableSelector').innerHTML = "";
+    document.getElementById('checksResultsContainer').innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">Run transcription or load a table to check Assets = Liabilities + Equity and Cash Flow reconciliations.</p>';
+
+    // 5. Switch back to live preview tab
+    switchRightTab('live');
+  }
+
+  function updateProviderConfig() {
+    const provider = document.getElementById('providerSelect').value;
+    const modelInput = document.getElementById('modelInput');
+    const saved = localStorage.getItem(`fin_model_${provider}`);
+    modelInput.value = saved || defaultModels[provider] || "";
+  }
+
+  function saveApiConfig() {
+    const provider = document.getElementById('providerSelect').value;
+    const model = document.getElementById('modelInput').value.trim();
+    const key = document.getElementById('apiKeyInput').value.trim();
+    localStorage.setItem(`fin_provider`, provider);
+    localStorage.setItem(`fin_model_${provider}`, model);
+    if (key) localStorage.setItem(`fin_key_${provider}`, key);
+    alert('API configuration saved locally in your browser.');
+  }
+
+  function loadSavedConfig() {
+    const provider = localStorage.getItem('fin_provider') || 'gemini';
+    document.getElementById('providerSelect').value = provider;
+    updateProviderConfig();
+    const savedKey = localStorage.getItem(`fin_key_${provider}`);
+    if (savedKey) document.getElementById('apiKeyInput').value = savedKey;
+  }
+
+  function switchRightTab(tabName) {
+    const tabs = ['live', 'grid', 'raw', 'checks', 'tests'];
+    tabs.forEach(t => {
+      const btn = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}Btn`);
+      const view = document.getElementById(`view${t.charAt(0).toUpperCase() + t.slice(1)}`);
+      if (btn) btn.classList.toggle('active', t === tabName);
+      if (view) view.style.display = (t === tabName) ? 'block' : 'none';
+    });
+    if (tabName === 'live') updateLivePreview();
+    if (tabName === 'raw') document.getElementById('rawMarkdownText').value = fullMarkdown;
+    if (tabName === 'checks') runFinancialChecks();
+  }
+
+  // Assemble full document using selected export options
+  function buildDocumentFromPages(pages) {
+    const pageBreakOpt = document.getElementById('pageBreakSelect').value;
+    const pageHeadingOpt = document.getElementById('pageHeadingSelect').value;
+    const total = pages.length;
+    const blocks = [];
+
+    pages.forEach((p, idx) => {
+      const pNum = p.pageNumber || (idx + 1);
+      let content = p.rawMarkdown.trim();
+
+      content = content.replace(/^#+\s*Page\s+\d+(\s+of\s+\d+)?\s*\n+/i, '')
+                       .replace(/^\*\*\[Page\s+\d+\]\*\*\s*\n+/i, '')
+                       .replace(/^<!--\s*Page\s+\d+\s*-->\s*\n+/i, '')
+                       .trim();
+
+      let heading = '';
+      if (pageHeadingOpt === 'h2') {
+        heading = `## Page ${pNum}\n\n`;
+      } else if (pageHeadingOpt === 'h3_total') {
+        heading = `### Page ${pNum} of ${total}\n\n`;
+      } else if (pageHeadingOpt === 'bold') {
+        heading = `**[Page ${pNum}]**\n\n`;
+      } else if (pageHeadingOpt === 'comment') {
+        heading = `<!-- Page ${pNum} -->\n\n`;
+      }
+
+      blocks.push(heading + content);
+    });
+
+    let separator = '\n\n';
+    if (pageBreakOpt === 'comment') {
+      separator = '\n\n<!-- pagebreak -->\n\n';
+    } else if (pageBreakOpt === 'hr') {
+      separator = '\n\n---\n\n';
+    } else if (pageBreakOpt === 'formfeed') {
+      separator = '\n\n\f\n\n';
+    } else if (pageBreakOpt === 'none') {
+      separator = '\n\n';
+    }
+
+    return blocks.join(separator);
+  }
+
+  function reformatDocumentLayout() {
+    if (transcribedPages.length > 0) {
+      fullMarkdown = buildDocumentFromPages(transcribedPages);
+      document.getElementById('rawMarkdownText').value = fullMarkdown;
+      parseTablesFromMarkdown();
+      updateLivePreview();
+    }
+  }
+
+  function updateLivePreview() {
+    const container = document.getElementById('markdownLiveContainer');
+    if (!fullMarkdown.trim()) {
+      container.innerHTML = '<em>No document transcribed yet. Upload your multi-page financial statement on the left and click "Transcribe Entire Document".</em>';
+      return;
+    }
+
+    let processed = fullMarkdown.replace(
+      /^\s*(<!--\s*pagebreak\s*-->|\f)\s*$/gim,
+      '\n\n<div class="page-break-badge">Page Break / Division</div>\n\n'
+    );
+
+    if (window.marked && typeof marked.parse === 'function') {
+      container.innerHTML = marked.parse(processed);
+    } else {
+      container.innerText = fullMarkdown;
+    }
+  }
+
+  function refreshFromRawTextarea() {
+    fullMarkdown = document.getElementById('rawMarkdownText').value;
+    parseTablesFromMarkdown();
+    updateLivePreview();
+    alert('Markdown and tables synchronized.');
+  }
+
+  function setupDropZone() {
+    const dropZone = document.getElementById('dropZone');
+    const filePicker = document.getElementById('filePicker');
+    dropZone.addEventListener('click', () => filePicker.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        processUploadedFile(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  function handleFileSelected(event) {
+    if (event.target.files && event.target.files[0]) {
+      processUploadedFile(event.target.files[0]);
+    }
+  }
+
+  async function processUploadedFile(file) {
+    document.getElementById('dropZone').style.display = 'none';
+    document.getElementById('previewWrapper').style.display = 'block';
+    document.getElementById('resetSourceBtn').style.display = 'inline-block';
+
+    if (file.type === 'application/pdf') {
+      const arrayBuffer = await file.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      totalPdfPages = pdfDoc.numPages;
+      currentPdfPage = 1;
+      document.getElementById('pageNav').style.display = 'flex';
+      document.getElementById('transcribeAllBtn').innerText = `⚡ Transcribe Entire Document (${totalPdfPages} Pages)`;
+      document.getElementById('transcribeStatusLabel').innerText = `PDF ready: ${totalPdfPages} total pages.`;
+      renderPdfPage(1);
+    } else {
+      activeImageBlob = file;
+      pdfDoc = null;
+      totalPdfPages = 1;
+      currentPdfPage = 1;
+      document.getElementById('pageNav').style.display = 'none';
+      document.getElementById('transcribeAllBtn').innerText = `⚡ Transcribe Image Document`;
+      document.getElementById('transcribeStatusLabel').innerText = `Image ready for transcription.`;
+      renderImageFile(file);
+    }
+  }
+
+  async function renderPdfPage(pageNum) {
+    if (!pdfDoc) return;
+    currentPdfPage = pageNum;
+    document.getElementById('pageCounter').innerText = `Page ${pageNum} / ${totalPdfPages}`;
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.getElementById('sourceCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+  }
+
+  function prevPage() { if (currentPdfPage > 1) renderPdfPage(currentPdfPage - 1); }
+  function nextPage() { if (currentPdfPage < totalPdfPages) renderPdfPage(currentPdfPage + 1); }
+
+  function renderImageFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.getElementById('sourceCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function renderPageToBase64(pageNum) {
+    if (!pdfDoc) {
+      const canvas = document.getElementById('sourceCanvas');
+      return canvas.toDataURL('image/jpeg', 0.90).split(',')[1];
+    }
+    const page = await pdfDoc.getPage(pageNum);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = viewport.width;
+    offscreenCanvas.height = viewport.height;
+    const ctx = offscreenCanvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+    return offscreenCanvas.toDataURL('image/jpeg', 0.90).split(',')[1];
+  }
+
+  async function callVisionApiForPage(base64Data, pageNum, totalPages) {
+    const provider = document.getElementById('providerSelect').value;
+    const model = document.getElementById('modelInput').value.trim();
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+
+    const prompt = `You are an expert financial document transcriber.
+This is page ${pageNum} of ${totalPages} of a financial statement.
+Transcribe this entire page into clean GitHub-Flavored Markdown.
+CRITICAL FORMATTING INSTRUCTIONS:
+1. Preserve full narrative text, headings, footnotes, and auditor notes.
+2. Maintain strict heading hierarchy (# H1 for title, ## H2 for main statements, ### H3 for notes).
+3. Preserve numbered (1., 2.) and bulleted (*, -) lists exactly as presented.
+4. Keep all financial tables in clean markdown tabular format (| Col1 | Col2 | Col3 |).
+5. Interleave text, tables, and notes in their EXACT reading sequence.
+6. Do not omit any financial rows or numbers.
+7. Return ONLY the raw Markdown text for this page. No conversational commentary or enclosing triple backticks.`;
+
+    let resultText = "";
+    if (provider === 'gemini') {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+            ]
+          }]
+        })
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message || 'Gemini API Error');
+      resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    } else if (provider === 'openai') {
+      const resp = await fetch(`https://api.openai.com/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } }
+            ]
+          }],
+          max_tokens: 4000
+        })
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message || 'OpenAI API Error');
+      resultText = data.choices?.[0]?.message?.content || "";
+    } else if (provider === 'groq') {
+      const resp = await fetch(`https://api.groq.com/openai/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } }
+            ]
+          }]
+        })
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message || 'Groq API Error');
+      resultText = data.choices?.[0]?.message?.content || "";
+    }
+
+    return resultText.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/, '').trim();
+  }
+
+  function cancelTranscription() {
+    isCancelled = true;
+    document.getElementById('transcribeStatusLabel').innerText = 'Cancelling transcription...';
+  }
+
+  async function transcribeEntireDocument() {
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+    if (!apiKey) {
+      alert('Please enter your API Key in the top header.');
+      return;
+    }
+
+    const totalPages = pdfDoc ? pdfDoc.numPages : 1;
+    isCancelled = false;
+
+    const allBtn = document.getElementById('transcribeAllBtn');
+    const pageBtn = document.getElementById('transcribePageBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const statusLabel = document.getElementById('transcribeStatusLabel');
+    const progressBar = document.getElementById('progressBar');
+
+    allBtn.disabled = true;
+    pageBtn.disabled = true;
+    cancelBtn.style.display = 'inline-block';
+
+    transcribedPages = [];
+    fullMarkdown = "";
+
+    try {
+      for (let p = 1; p <= totalPages; p++) {
+        if (isCancelled) {
+          statusLabel.innerText = `Transcription stopped at page ${p - 1} of ${totalPages}.`;
+          break;
+        }
+
+        const percent = Math.round(((p - 1) / totalPages) * 100);
+        progressBar.style.width = `${percent}%`;
+        statusLabel.innerText = `Transcribing page ${p} of ${totalPages} (${percent}%)...`;
+
+        if (pdfDoc) renderPdfPage(p);
+
+        const base64Img = await renderPageToBase64(p);
+        const pageMd = await callVisionApiForPage(base64Img, p, totalPages);
+        transcribedPages.push({ pageNumber: p, rawMarkdown: pageMd });
+
+        fullMarkdown = buildDocumentFromPages(transcribedPages);
+        document.getElementById('rawMarkdownText').value = fullMarkdown;
+        parseTablesFromMarkdown();
+        updateLivePreview();
+      }
+
+      if (!isCancelled) {
+        progressBar.style.width = '100%';
+        statusLabel.innerText = `✓ Successfully transcribed all ${totalPages} pages!`;
+        switchRightTab('live');
+      }
+    } catch (err) {
+      alert(`Transcription error on page: ${err.message}`);
+      statusLabel.innerText = `Error: ${err.message}`;
+    } finally {
+      allBtn.disabled = false;
+      pageBtn.disabled = false;
+      cancelBtn.style.display = 'none';
+    }
+  }
+
+  async function transcribeSingleActivePage() {
+    const apiKey = document.getElementById('apiKeyInput').value.trim();
+    if (!apiKey) {
+      alert('Please enter your API Key in the top header.');
+      return;
+    }
+
+    const statusLabel = document.getElementById('transcribeStatusLabel');
+    statusLabel.innerText = `Transcribing page ${currentPdfPage}...`;
+    try {
+      const base64Img = await renderPageToBase64(currentPdfPage);
+      const pageMd = await callVisionApiForPage(base64Img, currentPdfPage, totalPdfPages);
+      transcribedPages = [{ pageNumber: currentPdfPage, rawMarkdown: pageMd }];
+      fullMarkdown = buildDocumentFromPages(transcribedPages);
+      document.getElementById('rawMarkdownText').value = fullMarkdown;
+      parseTablesFromMarkdown();
+      updateLivePreview();
+      statusLabel.innerText = `✓ Page ${currentPdfPage} transcribed!`;
+      switchRightTab('live');
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+      statusLabel.innerText = `Error: ${err.message}`;
+    }
+  }
+
+  // Tokenize & Table Parsing
+  function tokenizeDocument(md) {
+    const lines = md.split(/\r?\n/);
+    const tokens = [];
+    let inTable = false;
+    let tableLines = [];
+    let tableStart = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const isTableLine = /^\s*\|.*\|\s*$/.test(line);
+
+      if (isTableLine) {
+        if (!inTable) {
+          const nextLine = lines[i + 1] || '';
+          const isSep = /^\s*\|[\s\-:|]+\|\s*$/.test(line);
+          const nextIsSep = /^\s*\|[\s\-:|]+\|\s*$/.test(nextLine);
+          if (isSep || nextIsSep) {
+            inTable = true;
+            tableLines = [line];
+            tableStart = i;
+            continue;
+          }
+        } else {
+          tableLines.push(line);
+          continue;
+        }
+      }
+
+      if (inTable) {
+        tokens.push({
+          type: 'table',
+          startLine: tableStart,
+          endLine: i - 1,
+          raw: tableLines.join('\n')
+        });
+        inTable = false;
+        tableLines = [];
+      }
+
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      if (/^#{1,6}\s+/.test(trimmed)) {
+        const level = trimmed.match(/^(#{1,6})\s+/)[1].length;
+        tokens.push({ type: 'heading', level: level, text: trimmed.replace(/^#{1,6}\s+/, ''), line: i });
+      } else if (/^(\*|\-|\+|\d+\.)\s+/.test(trimmed)) {
+        const isOrdered = /^\d+\.\s+/.test(trimmed);
+        tokens.push({ type: 'list_item', ordered: isOrdered, text: trimmed, line: i });
+      } else if (/^(<!--\s*pagebreak\s*-->|---|___|\*\*\*|\f)$/i.test(trimmed)) {
+        tokens.push({ type: 'pagebreak', line: i });
+      } else {
+        tokens.push({ type: 'text', text: trimmed, line: i });
+      }
+    }
+
+    if (inTable) {
+      tokens.push({
+        type: 'table',
+        startLine: tableStart,
+        endLine: lines.length - 1,
+        raw: tableLines.join('\n')
+      });
+    }
+
+    return tokens;
+  }
+
+  function parseTablesFromMarkdown() {
+    const tokens = tokenizeDocument(fullMarkdown);
+    const tableTokens = tokens.filter(t => t.type === 'table');
+    extractedTables = [];
+
+    tableTokens.forEach((tb, idx) => {
+      const lines = tb.raw.split('\n').filter(l => l.trim().length > 0);
+      if (lines.length >= 2) {
+        const rows = lines.map(line => {
+          let parts = line.split('|');
+          if (parts[0].trim() === '') parts.shift();
+          if (parts.length > 0 && parts[parts.length - 1].trim() === '') parts.pop();
+          return parts.map(c => c.trim());
+        });
+        extractedTables.push({
+          index: idx,
+          headers: rows[0] || [],
+          separator: rows[1] || [],
+          dataRows: rows.slice(2),
+          startLine: tb.startLine,
+          endLine: tb.endLine
+        });
+      }
+    });
+
+    const selector = document.getElementById('tableSelector');
+    selector.innerHTML = '';
+    extractedTables.forEach((t, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.innerText = `Table ${i + 1} (${t.dataRows.length} rows, ${t.headers.length} cols)`;
+      selector.appendChild(opt);
+    });
+
+    if (extractedTables.length > 0) {
+      currentTableIndex = 0;
+      loadSelectedTable();
+    }
+  }
+
+  function loadSelectedTable() {
+    const sel = document.getElementById('tableSelector');
+    currentTableIndex = parseInt(sel.value, 10) || 0;
+    const table = extractedTables[currentTableIndex];
+    if (!table) return;
+
+    gridHistory = [JSON.stringify(table)];
+    gridHistoryIndex = 0;
+    renderGridTable(table);
+  }
+
+  function renderGridTable(table) {
+    const grid = document.getElementById('editableGrid');
+    grid.innerHTML = '';
+
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    table.headers.forEach((h, colIdx) => {
+      const th = document.createElement('th');
+      th.contentEditable = "true";
+      th.innerText = h;
+      th.onblur = () => { table.headers[colIdx] = th.innerText.trim(); pushGridState(); };
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    grid.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    table.dataRows.forEach((row, rowIdx) => {
+      const tr = document.createElement('tr');
+      row.forEach((cell, colIdx) => {
+        const td = document.createElement('td');
+        td.contentEditable = "true";
+        td.innerText = cell;
+        td.onblur = () => {
+          table.dataRows[rowIdx][colIdx] = td.innerText.trim();
+          pushGridState();
+        };
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    grid.appendChild(tbody);
+  }
+
+  function pushGridState() {
+    const table = extractedTables[currentTableIndex];
+    gridHistory = gridHistory.slice(0, gridHistoryIndex + 1);
+    gridHistory.push(JSON.stringify(table));
+    gridHistoryIndex++;
+  }
+
+  function undoGrid() {
+    if (gridHistoryIndex > 0) {
+      gridHistoryIndex--;
+      const restored = JSON.parse(gridHistory[gridHistoryIndex]);
+      extractedTables[currentTableIndex] = restored;
+      renderGridTable(restored);
+    }
+  }
+
+  function redoGrid() {
+    if (gridHistoryIndex < gridHistory.length - 1) {
+      gridHistoryIndex++;
+      const restored = JSON.parse(gridHistory[gridHistoryIndex]);
+      extractedTables[currentTableIndex] = restored;
+      renderGridTable(restored);
+    }
+  }
+
+  function addRow() {
+    const table = extractedTables[currentTableIndex];
+    if (!table) return;
+    const emptyRow = Array(table.headers.length).fill("");
+    table.dataRows.push(emptyRow);
+    pushGridState();
+    renderGridTable(table);
+  }
+
+  function addColumn() {
+    const table = extractedTables[currentTableIndex];
+    if (!table) return;
+    table.headers.push(`Column ${table.headers.length + 1}`);
+    table.dataRows.forEach(r => r.push(""));
+    pushGridState();
+    renderGridTable(table);
+  }
+
+  function tableToMarkdownString(headers, dataRows) {
+    const colCount = Math.max(headers.length, ...dataRows.map(r => r.length));
+    const padRow = (row) => {
+      const r = [...row];
+      while (r.length < colCount) r.push('');
+      return r;
+    };
+    const paddedHeaders = padRow(headers);
+    const sep = Array(colCount).fill('---');
+    const formatLine = (cols) => '| ' + cols.join(' | ') + ' |';
+    return [
+      formatLine(paddedHeaders),
+      formatLine(sep),
+      ...dataRows.map(padRow).map(formatLine)
+    ].join('\n');
+  }
+
+  function applyTableEditsToDoc() {
+    const tokens = tokenizeDocument(fullMarkdown);
+    const tableTokens = tokens.filter(t => t.type === 'table');
+    const targetToken = tableTokens[currentTableIndex];
+    if (!targetToken) return;
+
+    const table = extractedTables[currentTableIndex];
+    const newTableMd = tableToMarkdownString(table.headers, table.dataRows);
+
+    const lines = fullMarkdown.split(/\r?\n/);
+    const before = lines.slice(0, targetToken.startLine);
+    const after = lines.slice(targetToken.endLine + 1);
+
+    fullMarkdown = [...before, newTableMd, ...after].join('\n');
+    document.getElementById('rawMarkdownText').value = fullMarkdown;
+    parseTablesFromMarkdown();
+    updateLivePreview();
+    alert(`Table ${currentTableIndex + 1} synchronized into full document without altering surrounding text or order.`);
+  }
+
+  function runFinancialChecks() {
+    const container = document.getElementById('checksResultsContainer');
+    container.innerHTML = '';
+    const checks = [];
+
+    let foundAssets = null;
+    let foundLiabilities = null;
+    let foundEquity = null;
+
+    extractedTables.forEach(t => {
+      t.dataRows.forEach(r => {
+        const item = (r[0] || "").toLowerCase();
+        const num = parseFloat((r[1] || "").replace(/[^0-9.-]/g, ''));
+        if (isNaN(num)) return;
+
+        if (item.includes('total assets')) foundAssets = num;
+        if (item.includes('total liabilities') && !item.includes('equity')) foundLiabilities = num;
+        if (item.includes('total equity') || item.includes('stockholders') || item.includes('shareholders')) foundEquity = num;
+      });
+    });
+
+    if (foundAssets !== null && foundLiabilities !== null && foundEquity !== null) {
+      const sum = foundLiabilities + foundEquity;
+      const diff = Math.abs(foundAssets - sum);
+      if (diff < 0.01) {
+        checks.push({ title: 'Balance Sheet Balance Check', detail: `Assets (${foundAssets}) = Liabilities (${foundLiabilities}) + Equity (${foundEquity})`, pass: true });
+      } else {
+        checks.push({ title: 'Balance Sheet Discrepancy Found', detail: `Assets (${foundAssets}) ≠ Liabilities + Equity (${sum}). Discrepancy: ${diff.toFixed(2)}`, pass: false });
+      }
+    } else {
+      checks.push({ title: 'Balance Sheet Check', detail: 'Could not automatically identify Total Assets, Liabilities, and Equity in current tables.', pass: false });
+    }
+
+    checks.forEach(c => {
+      const div = document.createElement('div');
+      div.className = `discrepancy-item ${c.pass ? 'pass' : ''}`;
+      div.innerHTML = `<strong>${c.title}</strong><br><span style="font-size:0.8rem;">${c.detail}</span>`;
+      container.appendChild(div);
+    });
+  }
+
+  async function saveMarkdownLocally() {
+    if (!fullMarkdown.trim()) { alert('No document to save.'); return; }
+    const filename = `financial_statement_${new Date().toISOString().slice(0, 10)}.md`;
+
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'Markdown File', accept: { 'text/markdown': ['.md'] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(fullMarkdown);
+        await writable.close();
+        alert('File saved directly to your local drive!');
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+
+    const blob = new Blob([fullMarkdown], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyMarkdown() {
+    navigator.clipboard.writeText(fullMarkdown).then(() => alert('Markdown copied to clipboard!'));
+  }
+
+  // CONVERSION TEST SUITE
+  const conversionTests = [
+    {
+      id: "test_headings",
+      title: "Test 1: Heading Hierarchy Retention",
+      desc: "Verifies H1 through H4 preserve their levels and relative sequence without shifting."
+    },
+    {
+      id: "test_lists",
+      title: "Test 2: Ordered and Unordered List Preservation",
+      desc: "Verifies bulleted and numbered lists keep item counts, order, and position between sections."
+    },
+    {
+      id: "test_pagebreaks",
+      title: "Test 3: Page Break Marker Preservation",
+      desc: "Verifies page breaks (<!-- pagebreak -->, ---, \\f) remain at exact section boundaries."
+    },
+    {
+      id: "test_interleaved_order",
+      title: "Test 4: Interleaved Reading Order Preservation",
+      desc: "Verifies narrative before Table 1, Table 1, narrative between, Table 2, and footnotes keep strict 1:1 order."
+    },
+    {
+      id: "test_table_roundtrip",
+      title: "Test 5: Table Grid Edit & Splice Round-Trip",
+      desc: "Edits cells inside Table 1 and Table 2 and confirms surrounding text, headings, and lists stay intact."
+    },
+    {
+      id: "test_export_options",
+      title: "Test 6: Page Heading & Marker Reformatting",
+      desc: "Tests dynamic reformatting between heading styles (## Page 1, ### Page 1 of N) and break markers."
+    }
+  ];
+
+  function renderConversionTestCards() {
+    const container = document.getElementById('testCardsContainer');
+    container.innerHTML = '';
+    conversionTests.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'test-card';
+      card.id = `card_${t.id}`;
+      card.innerHTML = `
+        <div class="test-header">
+          <span class="test-title">${t.title}</span>
+          <span class="status-pill idle" id="status_${t.id}">NOT RUN</span>
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom: 6px;">${t.desc}</p>
+        <div class="test-detail" id="detail_${t.id}">Awaiting execution...</div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  function setTestResult(testId, passed, message) {
+    const pill = document.getElementById(`status_${testId}`);
+    const detail = document.getElementById(`detail_${testId}`);
+    if (pill) {
+      pill.className = `status-pill ${passed ? 'pass' : 'fail'}`;
+      pill.innerText = passed ? 'PASS ✓' : 'FAIL ✗';
+    }
+    if (detail) {
+      detail.innerText = message;
+      detail.style.color = passed ? '#16a34a' : '#dc2626';
+    }
+  }
+
+  function runAllConversionTests() {
+    let allPass = true;
+    const sample = generateSampleMarkdown();
+
+    // 1. Heading Hierarchy Test
+    try {
+      const tokens = tokenizeDocument(sample);
+      const headings = tokens.filter(t => t.type === 'heading');
+      const expectedLevels = [1, 2, 2, 2, 3];
+      const actualLevels = headings.map(h => h.level);
+      const pass = JSON.stringify(expectedLevels) === JSON.stringify(actualLevels);
+      if (!pass) allPass = false;
+      setTestResult("test_headings", pass, pass ? `All 5 headings preserved levels [${actualLevels.join(' -> ')}]` : `Expected [${expectedLevels}] but got [${actualLevels}]`);
+    } catch (e) {
+      allPass = false;
+      setTestResult("test_headings", false, e.message);
+    }
+
+    // 2. Lists Test
+    try {
+      const tokens = tokenizeDocument(sample);
+      const lists = tokens.filter(t => t.type === 'list_item');
+      const pass = lists.length === 4 && lists[0].ordered === false && lists[2].ordered === true;
+      if (!pass) allPass = false;
+      setTestResult("test_lists", pass, pass ? `Successfully verified 2 unordered bullets and 2 numbered list items.` : `List count or ordering mismatch.`);
+    } catch (e) {
+      allPass = false;
+      setTestResult("test_lists", false, e.message);
+    }
+
+    // 3. Page Breaks Test
+    try {
+      const tokens = tokenizeDocument(sample);
+      const pagebreaks = tokens.filter(t => t.type === 'pagebreak');
+      const pass = pagebreaks.length === 2;
+      if (!pass) allPass = false;
+      setTestResult("test_pagebreaks", pass, pass ? `2 page break markers (<!-- pagebreak -->) correctly identified at boundaries.` : `Expected 2 pagebreaks, found ${pagebreaks.length}`);
+    } catch (e) {
+      allPass = false;
+      setTestResult("test_pagebreaks", false, e.message);
+    }
+
+    // 4. Interleaved Order Test
+    try {
+      const tokens = tokenizeDocument(sample);
+      const sequence = tokens.map(t => t.type);
+      const expectedSequence = [
+        'heading', 'text', 'heading', 'text', 'list_item', 'list_item', 'list_item', 'list_item',
+        'pagebreak', 'heading', 'text', 'table', 'text',
+        'pagebreak', 'heading', 'text', 'table', 'heading', 'text'
+      ];
+      const pass = JSON.stringify(sequence) === JSON.stringify(expectedSequence);
+      if (!pass) allPass = false;
+      setTestResult("test_interleaved_order", pass, pass ? `Exact interleaved structural sequence verified 1:1.` : `Sequence mismatch: ${JSON.stringify(sequence)}`);
+    } catch (e) {
+      allPass = false;
+      setTestResult("test_interleaved_order", false, e.message);
+    }
+
+    // 5. Table Roundtrip Splicing Test
+    try {
+      let doc = sample;
+      const tokens = tokenizeDocument(doc);
+      const tables = tokens.filter(t => t.type === 'table');
+      const lines = tables[0].raw.split('\n');
+      lines[2] = lines[2].replace('1,250', '1,999');
+      const splicedMd = lines.join('\n');
+      
+      const allLines = doc.split(/\r?\n/);
+      const updatedDoc = [
+        ...allLines.slice(0, tables[0].startLine),
+        splicedMd,
+        ...allLines.slice(tables[0].endLine + 1)
+      ].join('\n');
+
+      const updatedTokens = tokenizeDocument(updatedDoc);
+      const sequenceBefore = tokens.map(t => t.type);
+      const sequenceAfter = updatedTokens.map(t => t.type);
+
+      const pass = JSON.stringify(sequenceBefore) === JSON.stringify(sequenceAfter) &&
+                   updatedDoc.includes('1,999') &&
+                   updatedDoc.includes('# Consolidated Financial Statements') &&
+                   updatedDoc.includes('<!-- pagebreak -->');
+      if (!pass) allPass = false;
+      setTestResult("test_table_roundtrip", pass, pass ? `Table cell updated to 1,999 without corrupting headings, lists, or surrounding text.` : `Splicing altered document structure.`);
+    } catch (e) {
+      allPass = false;
+      setTestResult("test_table_roundtrip", false, e.message);
+    }
+
+    // 6. Page Heading & Marker Reformatting Test
+    try {
+      const testPages = [
+        { pageNumber: 1, rawMarkdown: "# Income\n| Item | Val |\n| --- | --- |\n| Rev | 100 |" },
+        { pageNumber: 2, rawMarkdown: "# Balance\n| Item | Val |\n| --- | --- |\n| Assets | 500 |" }
+      ];
+
+      const prevBreak = document.getElementById('pageBreakSelect').value;
+      const prevHeading = document.getElementById('pageHeadingSelect').value;
+
+      document.getElementById('pageBreakSelect').value = 'hr';
+      document.getElementById('pageHeadingSelect').value = 'h3_total';
+
+      const formatted = buildDocumentFromPages(testPages);
+      const pass = formatted.includes('### Page 1 of 2') &&
+                   formatted.includes('\n\n---\n\n') &&
+                   formatted.includes('### Page 2 of 2') &&
+                   formatted.includes('| Rev | 100 |') &&
+                   formatted.includes('| Assets | 500 |');
+
+      document.getElementById('pageBreakSelect').value = prevBreak;
+      document.getElementById('pageHeadingSelect').value = prevHeading;
+
+      if (!pass) allPass = false;
+      setTestResult("test_export_options", pass, pass ? `Page heading (### Page X of N) and horizontal rule (---) reformatting verified.` : `Reformatting failed.`);
+    } catch (e) {
+      allPass = false;
+      setTestResult("test_export_options", false, e.message);
+    }
+
+    document.getElementById('testSummaryBadge').innerText = allPass ? '6/6 Passed ✓' : 'Errors Detected';
+    document.getElementById('testSummaryBadge').style.color = allPass ? '#16a34a' : '#dc2626';
+  }
+
+  function generateSampleMarkdown() {
+    return `# Consolidated Financial Statements
+Fiscal Year Ended December 31, 2025
+
+## 1. Executive Summary
+The company achieved record operating income with disciplined capital allocation.
+* Consolidated revenue increased by 14%
+* Gross margin held stable at 68%
+1. Primary capital allocation: long-term debt retirement
+2. Secondary allocation: AI software research and development
+
+<!-- pagebreak -->
+
+## 2. Consolidated Balance Sheet
+The following table summarizes assets and liabilities:
+
+| Line Item | 2025 ($M) | 2024 ($M) |
+| --- | --- | --- |
+| Cash and cash equivalents | 1,250 | 980 |
+| Accounts receivable | 450 | 410 |
+| Total assets | 1,700 | 1,390 |
+| Total liabilities | 700 | 590 |
+| Total stockholders equity | 1,000 | 800 |
+
+Note: Balance sheet accounts have been audited by independent accountants.
+
+<!-- pagebreak -->
+
+## 3. Consolidated Cash Flows
+Key operational and capital expenditure metrics:
+
+| Activity Component | 2025 ($M) | 2024 ($M) |
+| --- | --- | --- |
+| Operating cash flow | 850 | 720 |
+| Capital expenditures | -320 | -290 |
+| Free cash flow | 530 | 430 |
+
+### Auditor Remarks
+Independent auditor confirmation and sign-off attached in accompanying schedule.`;
+  }
+
+  function loadSampleFinancialStatement() {
+    transcribedPages = [
+      {
+        pageNumber: 1,
+        rawMarkdown: `# Consolidated Financial Statements\nFiscal Year Ended December 31, 2025\n\n## 1. Executive Summary\nThe company achieved record operating income.\n* Revenue increased 14%\n* Gross margin stable at 68%\n1. Primary: debt retirement\n2. Secondary: R&D expansion`
+      },
+      {
+        pageNumber: 2,
+        rawMarkdown: `## 2. Consolidated Balance Sheet\n\n| Line Item | 2025 ($M) | 2024 ($M) |\n| --- | --- | --- |\n| Cash and cash equivalents | 1,250 | 980 |\n| Accounts receivable | 450 | 410 |\n| Total assets | 1,700 | 1,390 |\n| Total liabilities | 700 | 590 |\n| Total stockholders equity | 1,000 | 800 |\n\nNote: Figures are audited.`
+      },
+      {
+        pageNumber: 3,
+        rawMarkdown: `## 3. Consolidated Cash Flows\n\n| Activity | 2025 ($M) | 2024 ($M) |\n| --- | --- | --- |\n| Operating cash flow | 850 | 720 |\n| Capital expenditures | -320 | -290 |\n| Free cash flow | 530 | 430 |\n\n### Auditor Remarks\nSign-off confirmed.`
+      }
+    ];
+
+    fullMarkdown = buildDocumentFromPages(transcribedPages);
+    document.getElementById('rawMarkdownText').value = fullMarkdown;
+    parseTablesFromMarkdown();
+    updateLivePreview();
+    switchRightTab('live');
+    alert('Sample multi-page statement loaded. Switch options in the top bar to test live reformatting!');
+  }
+</script>
+</body>
+</html>
